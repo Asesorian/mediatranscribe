@@ -44,10 +44,8 @@ def load_env():
 def is_local_file(source):
     """Detectar si el argumento es un archivo local (no una URL)"""
     path = Path(source)
-    # Si el archivo existe en disco → archivo local
     if path.exists() and path.is_file():
         return True
-    # Si tiene extensión de audio/video conocida → también lo tratamos como local
     if path.suffix.lower() in LOCAL_EXTENSIONS:
         return True
     return False
@@ -58,7 +56,6 @@ def get_local_file_info(filepath):
     path = Path(filepath)
     file_size_mb = path.stat().st_size / (1024 * 1024)
 
-    # Intentar obtener duración con ffprobe si está disponible
     duration = 0
     try:
         cmd = [
@@ -73,7 +70,7 @@ def get_local_file_info(filepath):
         pass
 
     return {
-        "title": path.stem,           # Nombre del archivo sin extensión
+        "title": path.stem,
         "duration": duration,
         "uploader": "Archivo local",
         "upload_date": "",
@@ -88,9 +85,9 @@ def extract_audio_from_video(video_path, output_dir):
     output_path = os.path.join(output_dir, "audio.mp3")
     cmd = [
         "ffmpeg", "-i", str(video_path),
-        "-vn",                    # Sin video
+        "-vn",
         "-acodec", "libmp3lame",
-        "-q:a", "5",              # Calidad media → archivos más pequeños
+        "-q:a", "5",
         output_path, "-y"
     ]
     result = subprocess.run(cmd, capture_output=True, text=True)
@@ -258,7 +255,7 @@ def transcribe_with_groq(audio_path, api_key, max_retries=5):
             if attempt >= max_retries - 1:
                 raise
 
-            wait_seconds = 750  # fallback conservador
+            wait_seconds = 750
             match = re.search(r'try again in (\d+)m([\d.]+)s', str(e))
             if match:
                 wait_seconds = int(match.group(1)) * 60 + float(match.group(2)) + 10
@@ -307,7 +304,6 @@ def save_transcript(text, info, output_dir, method):
     else:
         dur_str = "—"
 
-    # Línea de origen: URL de YouTube o ruta del archivo local
     video_id = info.get("id", "")
     source_path = info.get("source_path", "")
     if video_id:
@@ -371,7 +367,6 @@ Ejemplos:
     print(f"  YT-Transcribe")
     print(f"{'='*60}")
 
-    # ── Detectar si es archivo local o URL ──────────────
     local_mode = is_local_file(args.source)
 
     if local_mode:
@@ -399,8 +394,8 @@ Ejemplos:
         transcript = None
         method = "Groq Whisper (whisper-large-v3)"
 
-        # Si es video, extraer audio primero
         if filepath.suffix.lower() in VIDEO_EXTENSIONS:
+            # Video: extraer audio con ffmpeg y transcribir dentro del mismo tmpdir
             print(f"\n🎬 Extrayendo audio del video (requiere ffmpeg)...")
             with tempfile.TemporaryDirectory() as tmpdir:
                 audio_path = extract_audio_from_video(filepath, tmpdir)
@@ -411,8 +406,8 @@ Ejemplos:
                 audio_size = os.path.getsize(audio_path) / (1024 * 1024)
                 print(f"  ✅ Audio extraído ({audio_size:.1f} MB)")
 
-                chunks = split_audio_if_needed(audio_path, tmpdir if os.path.dirname(audio_path) == tmpdir else None)
-                # Nota: los chunks están en tmpdir, hay que transcribir antes de salir del with
+                # CORRECCIÓN: sin segundo argumento — max_size_mb usa valor por defecto (24)
+                chunks = split_audio_if_needed(audio_path)
                 n = len(chunks)
                 print(f"\n🤖 Transcribiendo con Groq Whisper ({n} {'parte' if n == 1 else 'partes'})...")
                 parts = []
@@ -425,10 +420,9 @@ Ejemplos:
                         print(f"  ✅ Parte {i+1}/{n} completada ({len(text):,} chars)")
                 transcript = "\n\n".join(parts)
         else:
-            # Archivo de audio directo
+            # Audio directo
             print(f"\n🤖 Transcribiendo con Groq Whisper...")
             if file_size_mb > 24:
-                # Necesitamos un directorio temporal para los chunks
                 with tempfile.TemporaryDirectory() as tmpdir:
                     import shutil
                     tmp_audio = os.path.join(tmpdir, filepath.name)
@@ -460,7 +454,6 @@ Ejemplos:
         transcript = None
         method = ""
 
-        # Paso 1: Subtítulos YouTube
         if not args.force_audio:
             print(f"\n📝 Buscando subtítulos en YouTube ({args.lang})...")
             transcript = try_youtube_subtitles(args.source, args.lang)
@@ -470,7 +463,6 @@ Ejemplos:
             else:
                 print(f"  ❌ No hay subtítulos disponibles")
 
-        # Paso 2: Audio + Groq Whisper
         if not transcript:
             api_key = os.environ.get("GROQ_API_KEY")
             if not api_key:

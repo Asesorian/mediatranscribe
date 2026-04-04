@@ -1,8 +1,8 @@
 # YT-Transcribe
 
-YouTube → Transcripción en Markdown. Un solo comando.
+YouTube o archivo local → Transcripción en Markdown. Un solo comando.
 
-Busca subtítulos en YouTube primero (gratis, instantáneo). Si no hay, descarga el audio y transcribe con Groq Whisper (~300 min/día gratis).
+Busca subtítulos en YouTube primero (gratis, instantáneo). Si no hay, descarga el audio y transcribe con Groq Whisper (~300 min/día gratis). También acepta archivos de audio y video locales directamente.
 
 ---
 
@@ -18,17 +18,14 @@ Busca subtítulos en YouTube primero (gratis, instantáneo). Si no hay, descarga
 ## Instalación en Windows
 
 ```bash
-# 1. Clona el repo
 git clone https://github.com/Asesorian/yt-transcribe.git
 cd yt-transcribe
-
-# 2. Ejecuta el instalador
 install.bat
 ```
 
 El instalador hace tres cosas:
 - Instala `yt-dlp` y `groq` vía pip
-- Detecta si tienes ffmpeg (necesario solo para videos >25 min)
+- Detecta si tienes ffmpeg (necesario para videos >25 min y para archivos de video locales)
 - Te pide tu API key de Groq y la guarda en `.env`
 
 ---
@@ -36,20 +33,16 @@ El instalador hace tres cosas:
 ## Instalación en Mac / Linux
 
 ```bash
-# 1. Clona el repo
 git clone https://github.com/Asesorian/yt-transcribe.git
 cd yt-transcribe
-
-# 2. Instala dependencias
 pip install yt-dlp groq
 
-# 3. Instala ffmpeg (opcional, solo para videos largos)
+# ffmpeg (necesario para videos locales y audios >25 min)
 # Mac:
 brew install ffmpeg
 # Ubuntu/Debian:
 sudo apt install ffmpeg
 
-# 4. Crea el archivo .env con tu API key de Groq
 cp .env.example .env
 # Edita .env y pon tu clave: GROQ_API_KEY=tu_clave_aqui
 ```
@@ -70,10 +63,18 @@ El plan gratuito incluye ~300 minutos de audio por día con Whisper Large v3.
 ## Uso
 
 ```bash
-# Básico — subtítulos YouTube si hay, si no: Groq Whisper
+# URL de YouTube — subtítulos si hay, si no: Groq Whisper
 python yt_transcribe.py "https://youtube.com/watch?v=xxxxx"
 
-# Forzar audio + Groq (mejor calidad, gasta minutos Groq)
+# Archivo de video local (mp4, mkv, avi, mov...)
+python yt_transcribe.py "reunion.mp4"
+python yt_transcribe.py "C:\grabaciones\meeting.mp4"
+
+# Archivo de audio local (mp3, m4a, wav, ogg...)
+python yt_transcribe.py "audio.mp3"
+python yt_transcribe.py "C:\grabaciones\entrevista.m4a"
+
+# Forzar Groq Whisper (saltar subtítulos YouTube)
 python yt_transcribe.py "URL" --force-audio
 
 # Guardar en otra carpeta
@@ -87,24 +88,36 @@ python yt_transcribe.py "URL" --lang en
 
 ## Cómo funciona
 
-1. **Primero** busca subtítulos en YouTube (gratis, instantáneo)
-2. **Si no hay**, descarga el audio y transcribe con Groq Whisper
-3. **Si el audio es >25 MB**, lo divide automáticamente en partes (requiere ffmpeg)
-4. **Si hay rate limit** (429), espera el tiempo exacto que indica Groq y reintenta solo
-5. **Guarda** la transcripción como `.md` en la carpeta `transcripciones/`
+1. **Detecta automáticamente** si es una URL de YouTube o un archivo local
+2. **Para YouTube:** busca subtítulos primero (gratis), si no los hay descarga el audio
+3. **Para archivos de video** (mp4, mkv...): extrae el audio con ffmpeg y transcribe con Groq
+4. **Para archivos de audio** (mp3, m4a...): envía directamente a Groq Whisper
+5. **Si el audio supera 25 MB:** lo divide en partes automáticamente (requiere ffmpeg)
+6. **Si hay rate limit (429):** espera el tiempo exacto que indica Groq y reintenta solo
+7. **Guarda** la transcripción como `.md` en la carpeta `transcripciones/`
+
+---
+
+## Formatos soportados
+
+| Tipo | Extensiones |
+|---|---|
+| Video | `.mp4` `.mkv` `.avi` `.mov` `.webm` `.wmv` `.ts` `.mts` |
+| Audio | `.mp3` `.m4a` `.wav` `.ogg` `.flac` `.opus` |
 
 ---
 
 ## Formato de salida
 
 ```markdown
-# Título del Video
+# Título del Video o Nombre del Archivo
 
-> **Canal:** NombreCanal
+> **Fuente:** NombreCanal / Archivo local
+> **Fecha:** 2026-04-03
 > **Duración:** 2h 25m 03s
 > **Transcrito:** 2026-04-03 22:15
 > **Método:** Groq Whisper (whisper-large-v3)
-> **URL:** https://www.youtube.com/watch?v=...
+> **URL / Archivo:** ...
 
 [transcripción completa]
 ```
@@ -116,7 +129,7 @@ python yt_transcribe.py "URL" --lang en
 - Python 3.10+
 - yt-dlp
 - groq
-- ffmpeg (opcional, solo para videos >25 min / >25 MB de audio)
+- ffmpeg (necesario para archivos de video locales y audios >25 min)
 - API key de Groq (gratuita)
 
 ---
