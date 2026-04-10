@@ -26,6 +26,10 @@ python yt_transcribe.py "URL1" "URL2" sesion.mp4 grabacion.mp3
 ## Instalación en Windows
 
 ```bash
+# 1. Runtime JavaScript (requerido por yt-dlp para extraer info de YouTube)
+winget install DenoLand.Deno
+
+# 2. Clonar e instalar
 git clone https://github.com/Asesorian/yt-transcribe.git
 cd yt-transcribe
 install.bat
@@ -36,11 +40,20 @@ El instalador hace tres cosas:
 - Detecta si tienes ffmpeg (necesario para videos >25 min y para archivos de video locales)
 - Te pide tu API key de Groq y la guarda en `.env`
 
+> ⚠️ **Importante:** `install.bat` no instala Deno. Debes instalarlo antes manualmente con el comando de arriba, o yt-dlp fallará al obtener info de cualquier vídeo de YouTube con el error *"No supported JavaScript runtime could be found"*. Después de instalar Deno, **cierra y vuelve a abrir la terminal** para que coja el PATH actualizado.
+
 ---
 
 ## Instalación en Mac / Linux
 
 ```bash
+# 1. Runtime JavaScript (requerido por yt-dlp)
+# Mac:
+brew install deno
+# Linux:
+curl -fsSL https://deno.land/install.sh | sh
+
+# 2. Clonar e instalar
 git clone https://github.com/Asesorian/yt-transcribe.git
 cd yt-transcribe
 pip install yt-dlp groq
@@ -154,10 +167,61 @@ python yt_transcribe.py "URL1" "URL2" sesion.mp4 grabacion.mp3
 ## Requisitos
 
 - Python 3.10+
-- yt-dlp
+- **Deno** (runtime JavaScript requerido por yt-dlp moderno para extraer info de YouTube)
+- yt-dlp (mantener actualizado — ver Troubleshooting)
 - groq
 - ffmpeg (necesario para archivos de video locales y audios >25 min)
 - API key de Groq (gratuita)
+
+---
+
+## Troubleshooting
+
+### Error: *"No supported JavaScript runtime could be found"*
+
+yt-dlp moderno requiere un runtime de JavaScript para extraer información de vídeos de YouTube (YouTube ofusca las URLs con JS). Por defecto busca Deno.
+
+**Solución:**
+```bash
+# Windows
+winget install DenoLand.Deno
+
+# Mac
+brew install deno
+
+# Linux
+curl -fsSL https://deno.land/install.sh | sh
+```
+
+Después **cierra y vuelve a abrir la terminal** para que coja el PATH actualizado.
+
+### Error: *"Private video"* / *"Sign in if you've been granted access"*
+
+El vídeo es privado o no listado. Esto ocurre con frecuencia en streams en directo que el organizador oculta tras terminar la retransmisión. Opciones:
+
+- Esperar a que se republique como vídeo normal (suele pasar en eventos con charlas editadas posteriormente)
+- Buscar una versión alternativa en otro canal
+- Actualmente el script no soporta `--cookies-from-browser` de yt-dlp, pero se puede añadir modificando `yt_transcribe.py`
+
+### yt-dlp falla de forma rara con vídeos de YouTube
+
+YouTube cambia su ofuscador cada pocas semanas y las versiones viejas de yt-dlp dejan de funcionar sin previo aviso. Si notas errores extraños con vídeos que antes funcionaban, **actualiza yt-dlp primero**:
+
+```bash
+python -m pip install -U yt-dlp
+```
+
+Es buena práctica hacerlo cada pocas semanas o antes de transcribir vídeos importantes.
+
+### Limitación conocida: subtítulos automáticos de YouTube en vídeos largos
+
+La ruta de subtítulos YouTube (la que se usa por defecto, sin `--force-audio`) tiene un bug conocido con vídeos largos que usan subtítulos automáticos solapados: el deduplicado puede eliminar la mayor parte del contenido y devolver una transcripción muy incompleta sin avisar.
+
+**Workaround fiable:** usa `--force-audio` para saltar los subtítulos de YouTube y transcribir directamente con Groq Whisper. Más lento, pero resultado completo garantizado.
+
+```bash
+python yt_transcribe.py "URL" --force-audio
+```
 
 ---
 
