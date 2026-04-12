@@ -4,12 +4,29 @@ echo   YT-Transcribe - Instalador
 echo ============================================
 echo.
 
-echo [1/3] Instalando dependencias Python...
+echo [1/4] Verificando Deno (runtime JS para yt-dlp)...
+where deno >nul 2>&1
+if %errorlevel% neq 0 (
+    echo   Deno NO encontrado.
+    echo   Es OBLIGATORIO: yt-dlp lo necesita para extraer info de YouTube.
+    echo   Sin Deno veras el error: "No supported JavaScript runtime could be found"
+    echo.
+    echo   Instalar con:  winget install DenoLand.Deno
+    echo   Despues: cierra y vuelve a abrir esta terminal y relanza install.bat
+    echo.
+    pause
+    exit /b 1
+) else (
+    echo   OK - Deno encontrado
+)
+
+echo.
+echo [2/4] Instalando dependencias Python...
 pip install yt-dlp groq --break-system-packages -q
 echo   OK
 
 echo.
-echo [2/3] Verificando ffmpeg...
+echo [3/4] Verificando ffmpeg...
 where ffmpeg >nul 2>&1
 if %errorlevel% neq 0 (
     echo   ffmpeg NO encontrado.
@@ -23,7 +40,7 @@ if %errorlevel% neq 0 (
 )
 
 echo.
-echo [3/3] Configurando API key de Groq...
+echo [4/4] Configurando API key de Groq...
 if exist .env (
     echo   OK - .env ya existe
 ) else (

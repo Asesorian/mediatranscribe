@@ -30,6 +30,18 @@ AUDIO_EXTENSIONS = {".mp3", ".m4a", ".wav", ".ogg", ".flac", ".opus", ".weba"}
 VIDEO_EXTENSIONS = {".mp4", ".mkv", ".avi", ".mov", ".webm", ".wmv", ".ts", ".mts"}
 LOCAL_EXTENSIONS = AUDIO_EXTENSIONS | VIDEO_EXTENSIONS
 
+# Marcadores conocidos de truncamiento de Groq Whisper (bug reportado en su comunidad)
+TRUNCATION_MARKERS = [
+    "and so on",
+    "y así sucesivamente",
+    "etcétera, etcétera",
+    "and so forth",
+]
+
+# Heurística de densidad mínima esperada en español hablado (chars/min)
+# Habla normal ronda 900-1100 chars/min. 400 = umbral muy conservador.
+MIN_CHARS_PER_MINUTE = 400
+
 
 def load_env():
     """Cargar GROQ_API_KEY desde .env si existe"""
@@ -83,16 +95,22 @@ def get_local_file_info(filepath):
 
 
 def extract_audio_from_video(video_path, output_dir):
-    """Extraer audio de un archivo de video con ffmpeg"""
+    """Extraer audio de un archivo de video con ffmpeg.
+
+    FIX (v2): muestra progreso en tiempo real (-stats + sin capture_output)
+    para que el usuario vea avance en archivos grandes.
+    """
     output_path = os.path.join(output_dir, "audio.mp3")
     cmd = [
-        "ffmpeg", "-i", str(video_path),
+        "ffmpeg", "-hide_banner", "-loglevel", "error", "-stats",
+        "-i", str(video_path),
         "-vn",
         "-acodec", "libmp3lame",
         "-q:a", "5",
         output_path, "-y"
     ]
-    result = subprocess.run(cmd, capture_output=True, text=True)
+    # Sin capture_output: ffmpeg imprime su progreso directo al terminal
+    result = subprocess.run(cmd)
     if result.returncode != 0:
         return None
     return output_path
@@ -145,21 +163,31 @@ def try_youtube_subtitles(url, lang="es"):
 
 
 def parse_vtt(vtt_path):
-    """Convertir archivo VTT en texto limpio sin duplicados"""
+    """Convertir archivo VTT en texto limpio.
+
+    FIX (v2): solo dedup consecutivos idénticos.
+    El dedup global anterior (`seen = set()`) eliminaba 80-95% del contenido
+    en vídeos largos: frases comunes ('vale', 'entonces', 'exacto') aparecen
+    cientos de veces y solo se conservaba la primera.
+
+    El sliding window de los auto-subs de YouTube SÍ produce duplicados
+    consecutivos legítimos — esos sí los eliminamos.
+    """
     lines = []
-    seen = set()
+    last_clean = None
 
     with open(vtt_path, "r", encoding="utf-8") as f:
         for line in f:
             line = line.strip()
             if (not line or line.startswith("WEBVTT") or line.startswith("Kind:")
                     or line.startswith("Language:") or "-->" in line
-                    or line.startswith("NOTE") or line[0:1].isdigit() and line.endswith(":")):
+                    or line.startswith("NOTE")
+                    or (line[0:1].isdigit() and line.endswith(":"))):
                 continue
             clean = re.sub(r'<[^>]+>', '', line).strip()
-            if clean and clean not in seen:
-                seen.add(clean)
+            if clean and clean != last_clean:
                 lines.append(clean)
+                last_clean = clean
 
     paragraphs = []
     for i in range(0, len(lines), 5):
@@ -170,19 +198,26 @@ def parse_vtt(vtt_path):
 
 
 def download_audio(url, output_dir):
-    """Descargar solo audio del video de YouTube como MP3"""
+    """Descargar solo audio del video de YouTube como MP3.
+
+    FIX (v2): sin capture_output → yt-dlp muestra su barra de progreso
+    nativa en tiempo real (% descargado, velocidad, ETA). Imprescindible
+    en vídeos largos para saber que NO está colgado.
+    """
     output_template = os.path.join(output_dir, "audio.%(ext)s")
     cmd = [
         "yt-dlp",
         "-x",
         "--audio-format", "mp3",
         "--audio-quality", "5",
+        "--newline",  # progreso en líneas separadas, mejor para terminal
         "-o", output_template,
         url
     ]
-    result = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8")
+    # Sin capture_output: yt-dlp imprime su progreso directo al terminal
+    result = subprocess.run(cmd, encoding="utf-8")
     if result.returncode != 0:
-        print(f"  ❌ Error descargando audio: {result.stderr[:200]}")
+        print(f"  ❌ Error descargando audio (yt-dlp returncode {result.returncode})")
         return None
 
     for f in Path(output_dir).glob("audio.*"):
@@ -191,8 +226,36 @@ def download_audio(url, output_dir):
     return None
 
 
+def _run_ffmpeg_segment(audio_path, output_dir, chunk_duration):
+    """Ejecutar ffmpeg para segmentar audio. Devuelve lista de chunks o lanza."""
+    chunk_pattern = os.path.join(output_dir, "chunk_%03d.mp3")
+    cmd = [
+        "ffmpeg", "-i", audio_path,
+        "-f", "segment",
+        "-segment_time", str(chunk_duration),
+        "-c:a", "libmp3lame", "-q:a", "5",
+        chunk_pattern, "-y"
+    ]
+    result = subprocess.run(cmd, capture_output=True, text=True)
+
+    if result.returncode != 0:
+        print(f"  ❌ ffmpeg falló al segmentar audio:")
+        print(f"     {result.stderr[:300]}")
+        raise RuntimeError("Error segmentando audio con ffmpeg")
+
+    return sorted(str(f) for f in Path(output_dir).glob("chunk_*.mp3"))
+
+
 def split_audio_if_needed(audio_path, max_size_mb=24):
-    """Dividir audio en trozos si supera el límite de Groq (25 MB)"""
+    """Dividir audio en trozos si supera el límite de Groq (25 MB).
+
+    FIX (v2):
+      - Check returncode de ffmpeg (antes fallaba en silencio)
+      - Validación de tamaño REAL post-split de cada chunk
+      - Si algún chunk excede el límite, re-segmenta con duración menor
+      - Margen de seguridad 0.8 (antes 0.9, demasiado ajustado)
+      - Log del tamaño real de cada chunk para debug
+    """
     file_size_mb = os.path.getsize(audio_path) / (1024 * 1024)
 
     if file_size_mb <= max_size_mb:
@@ -213,26 +276,63 @@ def split_audio_if_needed(audio_path, max_size_mb=24):
     except (ValueError, AttributeError):
         total_duration = 3600
 
-    chunk_duration = int((max_size_mb / file_size_mb) * total_duration * 0.9)
+    # Margen 0.8 (antes 0.9): el bitrate variable de MP3 q5 puede generar
+    # chunks ligeramente mayores de lo estimado. Mejor pasarse de cortos.
+    chunk_duration = int((max_size_mb / file_size_mb) * total_duration * 0.8)
     chunk_duration = max(chunk_duration, 60)
 
-    chunk_pattern = os.path.join(output_dir, "chunk_%03d.mp3")
-    cmd = [
-        "ffmpeg", "-i", audio_path,
-        "-f", "segment",
-        "-segment_time", str(chunk_duration),
-        "-c:a", "libmp3lame", "-q:a", "5",
-        chunk_pattern, "-y"
-    ]
-    subprocess.run(cmd, capture_output=True, text=True)
+    chunks = _run_ffmpeg_segment(audio_path, output_dir, chunk_duration)
 
-    chunks = sorted(str(f) for f in Path(output_dir).glob("chunk_*.mp3"))
-    if chunks:
-        print(f"  ✅ Dividido en {len(chunks)} partes")
-        return chunks
+    if not chunks:
+        raise RuntimeError("ffmpeg no generó ningún chunk")
 
-    print(f"  ⚠️  No se pudo dividir, intentando archivo completo...")
-    return [audio_path]
+    # Validar tamaño real de cada chunk generado
+    oversized = []
+    for chunk in chunks:
+        size_mb = os.path.getsize(chunk) / (1024 * 1024)
+        if size_mb > max_size_mb:
+            oversized.append((chunk, size_mb))
+
+    # Si algún chunk excede el límite, re-segmentar con duración menor
+    retry_count = 0
+    while oversized and retry_count < 3:
+        retry_count += 1
+        print(f"  ⚠️  {len(oversized)} chunks superan {max_size_mb} MB:")
+        for chunk, size in oversized:
+            print(f"     {Path(chunk).name}: {size:.1f} MB")
+
+        # Borrar chunks actuales y reintentar con duración / 2
+        for chunk in chunks:
+            try:
+                os.remove(chunk)
+            except OSError:
+                pass
+
+        chunk_duration = max(chunk_duration // 2, 30)
+        print(f"  🔄 Re-segmentando con chunks de {chunk_duration}s...")
+
+        chunks = _run_ffmpeg_segment(audio_path, output_dir, chunk_duration)
+        if not chunks:
+            raise RuntimeError("ffmpeg no generó chunks en el re-split")
+
+        oversized = []
+        for chunk in chunks:
+            size_mb = os.path.getsize(chunk) / (1024 * 1024)
+            if size_mb > max_size_mb:
+                oversized.append((chunk, size_mb))
+
+    if oversized:
+        raise RuntimeError(
+            f"Tras {retry_count} reintentos, {len(oversized)} chunks siguen "
+            f"superando {max_size_mb} MB. Audio fuente posiblemente corrupto."
+        )
+
+    print(f"  ✅ Dividido en {len(chunks)} partes:")
+    for chunk in chunks:
+        size_mb = os.path.getsize(chunk) / (1024 * 1024)
+        print(f"     {Path(chunk).name}: {size_mb:.1f} MB")
+
+    return chunks
 
 
 def transcribe_with_groq(audio_path, api_key, max_retries=5):
@@ -287,6 +387,80 @@ def transcribe_with_groq(audio_path, api_key, max_retries=5):
             print(f"  🔄 Reintentando (intento {attempt + 2}/{max_retries})...")
 
 
+def transcribe_chunks(chunks, api_key, total_duration_seconds=0):
+    """Transcribir lista de chunks con tolerancia a fallos individuales.
+
+    FIX (v2): antes un solo chunk fallido abortaba TODO el proceso.
+    Ahora cada chunk se intenta de forma aislada — si falla, se marca
+    [PARTE X FALLÓ] y se continúa con los siguientes.
+
+    También detecta el bug de truncamiento de Groq ("and so on") y
+    valida la densidad chars/min al final para alertar de pérdidas.
+
+    Devuelve (transcript_string, stats_dict).
+    """
+    n = len(chunks)
+    parts = []
+    failures = []
+
+    for i, chunk in enumerate(chunks):
+        if n > 1:
+            print(f"  ⏳ Parte {i+1}/{n}...")
+        try:
+            text = transcribe_with_groq(chunk, api_key)
+            if not text or not text.strip():
+                raise RuntimeError("Groq devolvió respuesta vacía")
+
+            # Detectar truncamiento conocido (bug de Groq Whisper)
+            text_check = text.lower().rstrip(". \n")
+            if any(text_check.endswith(marker) for marker in TRUNCATION_MARKERS):
+                print(f"  ⚠️  Parte {i+1} parece truncada (termina en marcador conocido de Groq)")
+
+            parts.append(text)
+            if n > 1:
+                print(f"  ✅ Parte {i+1}/{n} ({len(text):,} chars)")
+        except Exception as e:
+            failures.append((i + 1, str(e)))
+            placeholder = f"\n\n[PARTE {i+1}/{n} FALLÓ: {e}]\n\n"
+            parts.append(placeholder)
+            print(f"  ❌ Parte {i+1}/{n} FALLÓ: {e}")
+            print(f"     Continuando con las siguientes partes...")
+
+    transcript = "\n\n".join(parts)
+
+    # Calcular caracteres reales (excluyendo placeholders de error)
+    real_chars = sum(
+        len(p) for p in parts
+        if not p.lstrip().startswith("[PARTE")
+    )
+
+    stats = {
+        "total_chunks": n,
+        "failed_chunks": len(failures),
+        "failures": failures,
+        "real_chars": real_chars,
+        "completeness_warning": False,
+    }
+
+    # Validación de completitud: chars/min vs duración esperada
+    if total_duration_seconds > 0:
+        expected_min_chars = (total_duration_seconds / 60) * MIN_CHARS_PER_MINUTE
+        if real_chars < expected_min_chars:
+            ratio_pct = (real_chars / expected_min_chars) * 100
+            duration_min = total_duration_seconds / 60
+            print(f"\n  ⚠️  ALERTA: transcripción posiblemente incompleta")
+            print(f"     {real_chars:,} chars para {duration_min:.0f} min de audio")
+            print(f"     Mínimo esperado: {expected_min_chars:,.0f} chars "
+                  f"({MIN_CHARS_PER_MINUTE} chars/min)")
+            print(f"     Densidad obtenida: {ratio_pct:.0f}% del mínimo")
+            stats["completeness_warning"] = True
+
+    if failures:
+        print(f"\n  ⚠️  Resumen: {len(failures)}/{n} partes fallaron")
+
+    return transcript, stats
+
+
 def save_transcript(text, info, output_dir, method):
     """Guardar transcripción como archivo Markdown"""
     safe_title = re.sub(r'[<>:"/\\|?*]', '', info["title"])
@@ -338,7 +512,7 @@ def save_transcript(text, info, output_dir, method):
 
 
 def process_source(source, args, output_dir):
-    """Procesar una sola fuente (URL o archivo local). Devuelve (filepath, método) o lanza excepción."""
+    """Procesar una sola fuente (URL o archivo local). Devuelve (filepath, método, chars) o lanza excepción."""
     local_mode = is_local_file(source)
 
     if local_mode:
@@ -350,12 +524,12 @@ def process_source(source, args, output_dir):
         print(f"\n📂 Archivo local detectado: {filepath.name}")
         info = get_local_file_info(filepath)
         file_size_mb = info["file_size_mb"]
+        duration = info["duration"]
         print(f"   Nombre:  {info['title']}")
         print(f"   Tamaño:  {file_size_mb:.1f} MB")
-        if info["duration"]:
-            dur = info["duration"]
-            print(f"   Duración: {dur // 3600}h {(dur % 3600) // 60}m {dur % 60}s" if dur >= 3600
-                  else f"   Duración: {dur // 60}:{dur % 60:02d}")
+        if duration:
+            print(f"   Duración: {duration // 3600}h {(duration % 3600) // 60}m {duration % 60}s" if duration >= 3600
+                  else f"   Duración: {duration // 60}:{duration % 60:02d}")
 
         api_key = os.environ.get("GROQ_API_KEY")
         if not api_key:
@@ -376,15 +550,7 @@ def process_source(source, args, output_dir):
                 chunks = split_audio_if_needed(audio_path)
                 n = len(chunks)
                 print(f"\n🤖 Transcribiendo con Groq Whisper ({n} {'parte' if n == 1 else 'partes'})...")
-                parts = []
-                for i, chunk in enumerate(chunks):
-                    if n > 1:
-                        print(f"  ⏳ Parte {i+1}/{n}...")
-                    text = transcribe_with_groq(chunk, api_key)
-                    parts.append(text)
-                    if n > 1:
-                        print(f"  ✅ Parte {i+1}/{n} completada ({len(text):,} chars)")
-                transcript = "\n\n".join(parts)
+                transcript, stats = transcribe_chunks(chunks, api_key, total_duration_seconds=duration)
         else:
             print(f"\n🤖 Transcribiendo con Groq Whisper...")
             if file_size_mb > 24:
@@ -395,15 +561,10 @@ def process_source(source, args, output_dir):
                     chunks = split_audio_if_needed(tmp_audio)
                     n = len(chunks)
                     print(f"  Dividido en {n} partes...")
-                    parts = []
-                    for i, chunk in enumerate(chunks):
-                        if n > 1:
-                            print(f"  ⏳ Parte {i+1}/{n}...")
-                        text = transcribe_with_groq(chunk, api_key)
-                        parts.append(text)
-                    transcript = "\n\n".join(parts)
+                    transcript, stats = transcribe_chunks(chunks, api_key, total_duration_seconds=duration)
             else:
-                transcript = transcribe_with_groq(str(filepath), api_key)
+                # Audio chico: una sola llamada, usar transcribe_chunks igual para validación
+                transcript, stats = transcribe_chunks([str(filepath)], api_key, total_duration_seconds=duration)
 
         print(f"  ✅ Transcripción completa ({len(transcript):,} caracteres)")
 
@@ -435,7 +596,7 @@ def process_source(source, args, output_dir):
             if not api_key:
                 raise EnvironmentError("No se encontró GROQ_API_KEY en .env")
 
-            print(f"\n🎵 Descargando audio...")
+            print(f"\n🎵 Descargando audio (verás el progreso de yt-dlp abajo)...")
             with tempfile.TemporaryDirectory() as tmpdir:
                 audio_path = download_audio(source, tmpdir)
                 if not audio_path:
@@ -448,16 +609,7 @@ def process_source(source, args, output_dir):
                 n = len(chunks)
                 print(f"\n🤖 Transcribiendo con Groq Whisper ({n} {'parte' if n == 1 else 'partes'})...")
 
-                parts = []
-                for i, chunk in enumerate(chunks):
-                    if n > 1:
-                        print(f"  ⏳ Parte {i+1}/{n}...")
-                    text = transcribe_with_groq(chunk, api_key)
-                    parts.append(text)
-                    if n > 1:
-                        print(f"  ✅ Parte {i+1}/{n} completada ({len(text):,} chars)")
-
-                transcript = "\n\n".join(parts)
+                transcript, stats = transcribe_chunks(chunks, api_key, total_duration_seconds=dur)
                 method = "Groq Whisper (whisper-large-v3)"
                 print(f"  ✅ Transcripción completa ({len(transcript):,} caracteres)")
 
