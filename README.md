@@ -2,7 +2,7 @@
 
 YouTube o archivos locales → Transcripción en Markdown. Una URL, varios archivos, o una mezcla — todo en un solo comando.
 
-Busca subtítulos en YouTube primero (gratis, instantáneo). Si no hay, descarga el audio y transcribe con Groq Whisper (~300 min/día gratis). Acepta archivos de audio y video locales directamente. **Modo batch incluido:** pasa varias fuentes a la vez y las procesa todas en secuencia.
+Busca subtítulos en YouTube primero (gratis, instantáneo). Si no hay, descarga el audio y transcribe con Groq Whisper (~300 min/día gratis) **con timestamps automáticos** `[HH:MM:SS]` por párrafo. Acepta archivos de audio y video locales directamente. **Modo batch incluido:** pasa varias fuentes a la vez y las procesa todas en secuencia.
 
 ```bash
 # Un archivo
@@ -133,11 +133,12 @@ python yt_transcribe.py "URL1" "URL2" sesion.mp4 grabacion.mp3
 2. **Para YouTube:** busca subtítulos primero (gratis), si no los hay descarga el audio
 3. **Para archivos de video** (mp4, mkv...): extrae el audio con ffmpeg y transcribe con Groq
 4. **Para archivos de audio** (mp3, m4a...): envía directamente a Groq Whisper
-5. **Si el audio supera 25 MB:** lo divide en partes automáticamente, **valida que cada parte esté bajo el límite real** y re-segmenta si hace falta
-6. **Si hay rate limit (429):** espera el tiempo exacto que indica Groq y reintenta solo
-7. **Tolerancia a fallos por chunk:** si una parte concreta falla, se marca `[PARTE X FALLÓ]` y continúa con las siguientes (no aborta todo)
-8. **Validación de completitud:** al final, comprueba caracteres / minuto y avisa si la densidad parece anormalmente baja
-9. **Guarda** la transcripción como `.md` en la carpeta `transcripciones/`
+5. **Si el audio supera 24 MB:** lo divide en partes con **5 segundos de overlap** entre chunks, valida tamaños reales y re-segmenta si hace falta. Al recomponer, **deduplica las zonas de solapamiento** para evitar texto repetido
+6. **Timestamps automáticos:** cada ~45 segundos de contenido (o tras un silencio >3s) se abre un nuevo párrafo con `[HH:MM:SS]` global
+7. **Si hay rate limit (429):** espera el tiempo exacto que indica Groq y reintenta solo
+8. **Tolerancia a fallos por chunk:** si una parte concreta falla, se marca `[PARTE X FALLÓ]` y continúa con las siguientes (no aborta todo)
+9. **Validación de completitud:** al final, comprueba caracteres / minuto y avisa si la densidad parece anormalmente baja
+10. **Guarda** la transcripción como `.md` en la carpeta `transcripciones/`
 
 ---
 
@@ -224,6 +225,19 @@ Si al final de la ejecución ves un warning de densidad chars/minuto baja, la tr
 
 ## Changelog
 
+### v3 (16 abril 2026)
+
+**Timestamps y overlap para audios largos.**
+- Output Markdown ahora incluye `[HH:MM:SS]` por parrafo (~45s de contenido o silencio >3s). Los timestamps son globales respecto al audio original.
+- Chunking con **overlap de 5 segundos** entre partes consecutivas. Elimina la perdida de palabras en los bordes que ocurria con el corte en seco de v2.
+- Groq Whisper ahora usa `response_format="verbose_json"` con `timestamp_granularities=["segment"]`, que devuelve timestamps locales por segment en cada chunk.
+- Recomposicion de timestamps globales: offset acumulado por chunk + deduplicacion en zona de overlap (descarta segments cuyo inicio global cae dentro de lo ya transcrito).
+- Progreso de descarga yt-dlp ahora se muestra en una sola linea que se actualiza in-place (antes generaba cientos de lineas de spam en videos grandes).
+- Agrupacion en parrafos por umbral temporal, no por numero de lineas.
+- Backup de v2 conservado como `yt_transcribe_v2_backup.py`.
+
+**Validado con:** video de 128 min (920 MB) -> 105.620 caracteres en 3 chunks, overlap dedup descarto 5 segments, rate limit retry automatico funciono correctamente.
+
 ### v2 (12 abril 2026)
 
 **Resuelto:** Bug serio en vídeos largos.
@@ -253,7 +267,8 @@ Primera versión pública: soporte URLs YouTube + archivos locales (mp4, mp3, m4
 
 ```
 yt-transcribe/
-  yt_transcribe.py     Script principal (multiplataforma)
+  yt_transcribe.py             Script principal v3 (multiplataforma)
+  yt_transcribe_v2_backup.py   Backup de v2 (sin timestamps)
   install.bat          Instalador automático (Windows)
   launcher.pyw         Lanzador con doble clic (Windows)
   YT-Transcribe.bat    Acceso directo (Windows)
