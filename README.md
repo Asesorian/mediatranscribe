@@ -18,29 +18,34 @@ python yt_transcribe.py "URL1" "URL2" sesion.mp4 grabacion.mp3
 
 | Sistema | Estado |
 |---|---|
-| Windows | ✅ Instalación automática (`install.bat`) |
+| Windows | ✅ Instalación one shot (`install.bat`) |
 | Mac / Linux | ✅ Funciona — instalación manual (ver abajo) |
 
 ---
 
-## Instalación en Windows
+## Instalación en Windows — One Shot
 
 ```bash
-# 1. Instalar yt-dlp desde GitHub (obligatorio — la versión pip no incluye el solver JS)
-winget install yt-dlp
-
-# 2. Clonar e instalar
 git clone https://github.com/Asesorian/yt-transcribe.git
 cd yt-transcribe
 install.bat
 ```
 
-El instalador (`install.bat`) hace cuatro cosas:
-- Instala `groq` vía pip
-- Detecta si tienes ffmpeg (necesario para videos >25 min y para archivos de video locales)
-- Te pide tu API key de Groq y la guarda en `.env`
+El instalador hace todo automáticamente:
 
-> ⚠️ **Importante:** instala yt-dlp con `winget install yt-dlp`, no con pip. La versión pip no incluye el solver de JS challenges de YouTube y fallará con muchos videos.
+1. **yt-dlp** — instala desde winget (o actualiza si ya está). La versión winget incluye el solver de JS challenges de YouTube; la versión pip no.
+2. **groq** — instala vía pip
+3. **ffmpeg** — instala desde winget (necesario para videos >25 min y archivos de video locales)
+4. **API key de Groq** — te la pide y la guarda en `.env`
+5. **Cookies de YouTube** — te guía paso a paso:
+   - Pregunta si ya tienes la extensión instalada
+   - Si no: abre Chrome Web Store directamente en la extensión correcta y espera a que la instales
+   - Abre YouTube automáticamente con instrucciones en pantalla
+   - Detecta `cookies.txt` solo y continúa sin que hagas nada más
+
+Al terminar, el script está listo para usar.
+
+> ℹ️ **Las cookies caducan** (semanas o meses). Cuando veas el error `Please sign in`, re-exporta `cookies.txt` desde la extensión del navegador y reemplaza el archivo. No hace falta reinstalar nada más.
 
 ---
 
@@ -69,6 +74,8 @@ cp .env.example .env
 # Edita .env y pon tu clave: GROQ_API_KEY=tu_clave_aqui
 ```
 
+Después sigue el proceso de cookies de la sección siguiente.
+
 ---
 
 ## Autenticación con YouTube (requerida desde 2026)
@@ -77,17 +84,15 @@ cp .env.example .env
 
 Al mismo tiempo, YouTube eliminó el soporte OAuth2 en yt-dlp, y Chrome 127+ cambió el cifrado de sus cookies (App-Bound Encryption), lo que impide que yt-dlp las lea directamente con `--cookies-from-browser`. La única vía estable que queda es exportar las cookies manualmente como archivo `cookies.txt`.
 
-**Solución: exportar cookies desde el navegador**
+**En Windows el instalador te guía por este proceso automáticamente.** Para Mac/Linux, o si necesitas renovar las cookies:
 
-1. Instala la extensión **Get cookies.txt LOCALLY** en Chrome o Firefox:
+1. Instala la extensión **Get cookies.txt LOCALLY**:
    - Chrome: [chromewebstore.google.com](https://chromewebstore.google.com/detail/get-cookiestxt-locally/cclelndahbckbenkjhflpdbgdldlbecc)
 2. Abre [youtube.com](https://youtube.com) con tu sesión iniciada
 3. Haz clic en el icono de la extensión → **Export**
 4. Guarda el archivo como `cookies.txt` en la misma carpeta que `yt_transcribe.py`
 
-El script detecta `cookies.txt` automáticamente y lo usa en cada llamada a yt-dlp. No hace falta ninguna configuración adicional — verás `🍪 Usando cookies.txt` al procesar cualquier URL de YouTube.
-
-> ⚠️ **Las cookies caducan.** Si vuelves a ver el error de login, simplemente re-exporta el `cookies.txt` desde el navegador y reemplaza el anterior. El código no necesita ningún cambio.
+El script detecta `cookies.txt` automáticamente. Verás `🍪 Usando cookies.txt` al procesar cualquier URL de YouTube.
 
 > ⚠️ **No subas `cookies.txt` a Git.** Está en `.gitignore` — contiene tu sesión de YouTube y no debe ser pública.
 
@@ -197,7 +202,7 @@ python yt_transcribe.py "URL1" "URL2" sesion.mp4 grabacion.mp3
 - groq
 - ffmpeg (necesario para archivos de video locales y audios >25 min)
 - API key de Groq (gratuita)
-- `cookies.txt` de YouTube (ver sección Autenticación)
+- `cookies.txt` de YouTube (el instalador te guía — ver Autenticación)
 
 ---
 
@@ -205,21 +210,21 @@ python yt_transcribe.py "URL1" "URL2" sesion.mp4 grabacion.mp3
 
 ### Error: *"Please sign in"* / *"Sign in to confirm you're not a bot"*
 
-YouTube requiere autenticación desde 2026 para todos los videos. Ver sección **Autenticación** arriba para la solución completa con contexto.
+YouTube requiere autenticación desde 2026. Ver sección **Autenticación** arriba.
 
-Si ya tienes `cookies.txt` y vuelve a aparecer el error, las cookies han caducado. Re-expórtalas desde el navegador y reemplaza el archivo.
+Si ya tienes `cookies.txt` y vuelve a aparecer el error, las cookies han caducado. Re-expórtalas desde el navegador y reemplaza el archivo. No hace falta reinstalar nada.
 
 ### Error: *"Private video"* / *"Sign in if you've been granted access"*
 
-El vídeo es privado o no listado. Las cookies.txt solo funcionan para videos accesibles con tu cuenta. Si el video no es visible desde tu navegador con esa cuenta, tampoco será descargable.
+El vídeo es privado o no listado. Las cookies solo funcionan para videos accesibles con tu cuenta. Si el video no es visible desde tu navegador, tampoco será descargable.
 
 ### yt-dlp falla de forma rara con vídeos de YouTube
 
 YouTube cambia su sistema de protección frecuentemente. Si notas errores extraños:
 
-1. **Actualiza yt-dlp** (debe estar instalado desde GitHub/winget, no pip):
+1. **Actualiza yt-dlp:**
 ```bash
-# Windows (winget)
+# Windows
 winget upgrade yt-dlp
 
 # Mac
@@ -232,7 +237,7 @@ sudo curl -L https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp -o
 
 ### Aviso: *"transcripción posiblemente incompleta"*
 
-Si al final de la ejecución ves un warning de densidad chars/minuto baja, la transcripción puede estar parcial. Mira el output: cualquier marca `[PARTE X FALLÓ]` te indica exactamente qué chunk hay que reprocesar. Volver a lanzar el comando suele resolverlo.
+Si ves un warning de densidad chars/minuto baja, busca marcas `[PARTE X FALLÓ]` en el output. Volver a lanzar el comando suele resolverlo (suelen ser rate limits puntuales).
 
 ---
 
@@ -240,32 +245,34 @@ Si al final de la ejecución ves un warning de densidad chars/minuto baja, la tr
 
 ### v3.1 (18 abril 2026)
 
-**Autenticación YouTube obligatoria.**
+**Autenticación YouTube obligatoria + instalador one shot.**
 
-YouTube lanzó en 2026 una campaña contra downloaders que afecta a todos los videos públicos. Cambios:
-- Soporte nativo para `cookies.txt`: si el archivo existe en la carpeta del script, se pasa automáticamente a yt-dlp en todas las llamadas
+YouTube lanzó en 2026 una campaña contra downloaders que afecta a todos los videos públicos. OAuth2 también fue eliminado. Cambios:
+- Instalador completamente reescrito: instala yt-dlp, groq, ffmpeg y guía el proceso de cookies paso a paso sin intervención manual salvo la exportación
+- Si el usuario no tiene la extensión, el instalador abre Chrome Web Store directamente y espera confirmación antes de continuar
+- El instalador abre YouTube automáticamente, muestra instrucciones en pantalla y detecta `cookies.txt` solo cuando aparece en la carpeta
+- Soporte nativo `cookies.txt` en el script: se pasa automáticamente a yt-dlp si el archivo existe
 - El script muestra `🍪 Usando cookies.txt` al procesar URLs de YouTube
-- Eliminada dependencia de Deno (ya no es necesario con yt-dlp instalado desde GitHub)
-- **Requisito actualizado:** yt-dlp debe instalarse desde GitHub o winget, no desde pip. La versión pip no incluye el solver de JS challenges
+- **Requisito actualizado:** yt-dlp debe instalarse desde GitHub o winget, no pip
 
 ### v3 (16 abril 2026)
 
 **Timestamps y overlap para audios largos.**
-- Output Markdown ahora incluye `[HH:MM:SS]` por parrafo (~45s de contenido o silencio >3s).
-- Chunking con **overlap de 5 segundos** entre partes consecutivas.
-- Groq Whisper usa `response_format="verbose_json"` con `timestamp_granularities=["segment"]`.
-- Recomposicion de timestamps globales + deduplicacion en zona de overlap.
-- Backup de v2 conservado como `yt_transcribe_v2_backup.py`.
+- Output Markdown con `[HH:MM:SS]` por párrafo (~45s de contenido o silencio >3s)
+- Chunking con overlap de 5 segundos entre partes consecutivas
+- Groq Whisper usa `verbose_json` + `timestamp_granularities`
+- Deduplicación en zona de overlap al recomponer timestamps globales
+- Backup de v2 conservado como `yt_transcribe_v2_backup.py`
 
-**Validado con:** video de 128 min (920 MB) → 105.620 caracteres en 3 chunks.
+**Validado con:** video de 128 min → 105.620 caracteres en 3 chunks.
 
 ### v2 (12 abril 2026)
 
 **Resuelto:** Bug serio en vídeos largos.
-- `parse_vtt` perdía 80-95% del contenido por dedup global de frases comunes.
-- `split_audio` verifica tamaño real de cada chunk y re-segmenta si hace falta.
-- Tolerancia a fallos por chunk: marca `[PARTE X FALLÓ]` y continúa.
-- Validación de completitud al final (chars/min).
+- `parse_vtt` perdía 80-95% del contenido por dedup global
+- `split_audio` verifica tamaño real de cada chunk
+- Tolerancia a fallos por chunk con marcas `[PARTE X FALLÓ]`
+- Validación de completitud al final (chars/min)
 
 ### v1 (4 abril 2026)
 
@@ -277,14 +284,14 @@ Primera versión pública: soporte URLs YouTube + archivos locales, modo batch, 
 
 ```
 yt-transcribe/
-  yt_transcribe.py             Script principal v3 (multiplataforma)
+  yt_transcribe.py             Script principal (multiplataforma)
   yt_transcribe_v2_backup.py   Backup de v2 (sin timestamps)
-  install.bat          Instalador automático (Windows)
-  launcher.pyw         Lanzador con doble clic (Windows)
-  YT-Transcribe.bat    Acceso directo (Windows)
-  .env.example         Plantilla para tu API key
-  .env                 Tu API key (no se sube a Git)
-  cookies.txt          Cookies de YouTube (no se sube a Git)
-  transcripciones/     Aquí se guardan los .md (no se sube a Git)
-  README.md            Este archivo
+  install.bat                  Instalador one shot (Windows)
+  launcher.pyw                 Lanzador con doble clic (Windows)
+  YT-Transcribe.bat            Acceso directo (Windows)
+  .env.example                 Plantilla para tu API key
+  .env                         Tu API key (no se sube a Git)
+  cookies.txt                  Cookies de YouTube (no se sube a Git)
+  transcripciones/             Aquí se guardan los .md (no se sube a Git)
+  README.md                    Este archivo
 ```

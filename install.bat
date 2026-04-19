@@ -94,23 +94,50 @@ if exist cookies.txt (
 )
 
 echo   YouTube requiere login desde 2026 para todos los videos.
-echo   Necesitas exportar tus cookies de sesion una vez.
+echo   Necesitas exportar tus cookies de sesion una vez (30 segundos).
 echo.
-echo   INSTRUCCIONES (30 segundos):
+echo   PASO A: Instalar la extension en Chrome
+echo   ─────────────────────────────────────────────────────────
+echo   Se abrira Chrome Web Store con la extension necesaria.
+echo   Haz clic en "Anadir a Chrome" e instalala.
+echo.
+set /p TIENE_EXT="  Ya tienes instalada la extension 'Get cookies.txt LOCALLY'? (S/N): "
+if /i "!TIENE_EXT!"=="S" goto :abrir_youtube
+if /i "!TIENE_EXT!"=="s" goto :abrir_youtube
+
+echo.
+echo   Abriendo Chrome Web Store para instalar la extension...
+
+where chrome >nul 2>&1
+if %errorlevel% equ 0 (
+    start chrome "https://chromewebstore.google.com/detail/get-cookiestxt-locally/cclelndahbckbenkjhflpdbgdldlbecc"
+) else (
+    where msedge >nul 2>&1
+    if %errorlevel% equ 0 (
+        start msedge "https://chromewebstore.google.com/detail/get-cookiestxt-locally/cclelndahbckbenkjhflpdbgdldlbecc"
+    ) else (
+        start "" "https://chromewebstore.google.com/detail/get-cookiestxt-locally/cclelndahbckbenkjhflpdbgdldlbecc"
+    )
+)
+
+echo.
+set /p EXT_OK="  Pulsa Enter cuando hayas instalado la extension..."
+
+:abrir_youtube
+echo.
+echo   PASO B: Exportar cookies desde YouTube
 echo   ─────────────────────────────────────────────────────────
 echo   1. Se abrira YouTube en tu navegador
-echo   2. Asegurate de estar logueado en YouTube
-echo   3. Instala la extension "Get cookies.txt LOCALLY":
-echo      Chrome: https://chromewebstore.google.com/detail/cclelndahbckbenkjhflpdbgdldlbecc
-echo   4. Haz clic en el icono de la extension y pulsa "Export"
+echo   2. Asegurate de estar LOGUEADO en YouTube
+echo   3. Haz clic en el icono de la extension (arriba a la derecha)
+echo   4. Pulsa "Export"
 echo   5. Guarda el archivo como "cookies.txt" en esta carpeta:
 echo      %~dp0
 echo   ─────────────────────────────────────────────────────────
 echo.
-echo   Abriendo YouTube en el navegador...
+echo   Abriendo YouTube...
 echo.
 
-:: Intentar abrir con Chrome, Edge o el navegador por defecto
 where chrome >nul 2>&1
 if %errorlevel% equ 0 (
     start chrome "https://www.youtube.com"
@@ -124,12 +151,13 @@ if %errorlevel% equ 0 (
 )
 
 echo   Esperando cookies.txt en: %~dp0
-echo   (El instalador continuara automaticamente cuando lo detecte)
-echo   Pulsa Ctrl+C para cancelar y continuar sin cookies.
+echo   (Continuara automaticamente cuando lo detecte)
+echo   Pulsa Ctrl+C para cancelar.
 echo.
 
 :wait_cookies
 if exist cookies.txt (
+    echo.
     echo   OK - cookies.txt detectado!
     goto :cookies_ok
 )
@@ -141,21 +169,26 @@ goto :wait_cookies
 echo.
 echo.
 echo ============================================================
-echo   Instalacion completada!
+echo   Instalacion completada! Todo listo para usar.
 echo ============================================================
 echo.
 echo   Uso basico:
 echo     python yt_transcribe.py "https://youtube.com/watch?v=xxxxx"
 echo.
-echo   Modo batch (varios videos):
+echo   Modo batch (varios videos a la vez):
 echo     python yt_transcribe.py "URL1" "URL2" video.mp4
 echo.
 echo   Las transcripciones se guardan en:
 echo     %~dp0transcripciones\
 echo.
-echo   NOTA: Las cookies de YouTube caducan periodicamente.
-echo   Si ves el error "Please sign in", vuelve a exportar cookies.txt
-echo   desde la extension del navegador y reemplaza el archivo aqui.
-echo ============================================================
+echo   ─────────────────────────────────────────────────────────
+echo   SOBRE LAS COOKIES:
+echo   Las cookies de YouTube caducan periodicamente (semanas o meses).
+echo   Cuando veas el error "Please sign in", simplemente:
+echo     1. Abre YouTube en el navegador (ya logueado)
+echo     2. Haz clic en la extension "Get cookies.txt LOCALLY"
+echo     3. Pulsa "Export" y reemplaza el cookies.txt de esta carpeta
+echo   No hace falta reinstalar nada mas.
+echo   ─────────────────────────────────────────────────────────
 echo.
 pause
