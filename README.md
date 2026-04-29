@@ -1,297 +1,176 @@
-# YT-Transcribe
+# MediaTranscribe v1.0
 
-YouTube o archivos locales → Transcripción en Markdown. Una URL, varios archivos, o una mezcla — todo en un solo comando.
+> Transcripción de audio y video a Markdown con timestamps — YouTube, Vimeo, archivos locales.
 
-Busca subtítulos en YouTube primero (gratis, instantáneo). Si no hay, descarga el audio y transcribe con Groq Whisper (~300 min/día gratis) **con timestamps automáticos** `[HH:MM:SS]` por párrafo. Acepta archivos de audio y video locales directamente. **Modo batch incluido:** pasa varias fuentes a la vez y las procesa todas en secuencia.
-
-```bash
-# Un archivo
-python yt_transcribe.py "https://youtube.com/watch?v=xxxxx"
-
-# Varios a la vez (batch)
-python yt_transcribe.py "URL1" "URL2" sesion.mp4 grabacion.mp3
-```
+Anteriormente conocido como **YT-Transcribe**. Renombrado a MediaTranscribe para reflejar el soporte completo de fuentes locales y múltiples plataformas.
 
 ---
 
-## Compatibilidad
+## ¿Qué hace?
 
-| Sistema | Estado |
-|---|---|
-| Windows | ✅ Instalación one shot (`install.bat`) |
-| Mac / Linux | ✅ Funciona — instalación manual (ver abajo) |
+Convierte cualquier fuente de audio o video en un archivo Markdown con timestamps cada ~45 segundos. Ideal para transcribir reuniones, ponencias, clases o cualquier contenido en audio.
+
+**Fuentes soportadas:**
+- URLs de YouTube y Vimeo
+- Archivos de audio locales: `.mp3`, `.m4a`, `.aac`, `.wav`, `.ogg`, `.flac`, `.opus`
+- Archivos de video locales: `.mp4`, `.mkv`, `.avi`, `.mov`, `.webm`
+
+**Salida:** archivo `.md` con cabecera de metadatos y transcripción con timestamps `[HH:MM:SS]`.
 
 ---
 
-## Instalación en Windows — One Shot
+## Instalación
+
+### Requisitos
+- Python 3.10+
+- [ffmpeg](https://ffmpeg.org/) instalado y en el PATH
+- [yt-dlp](https://github.com/yt-dlp/yt-dlp) instalado (`pip install yt-dlp`)
+- Cuenta en [Groq](https://console.groq.com/) (gratuita)
+
+### Setup
 
 ```bash
-git clone https://github.com/Asesorian/yt-transcribe.git
+# 1. Clonar el repositorio
+git clone https://github.com/tu-usuario/yt-transcribe.git
 cd yt-transcribe
-install.bat
-```
 
-El instalador hace todo automáticamente:
+# 2. Instalar dependencias Python
+pip install groq yt-dlp
 
-1. **yt-dlp** — instala desde winget (o actualiza si ya está). La versión winget incluye el solver de JS challenges de YouTube; la versión pip no.
-2. **groq** — instala vía pip
-3. **ffmpeg** — instala desde winget (necesario para videos >25 min y archivos de video locales)
-4. **API key de Groq** — te la pide y la guarda en `.env`
-5. **Cookies de YouTube** — te guía paso a paso:
-   - Pregunta si ya tienes la extensión instalada
-   - Si no: abre Chrome Web Store directamente en la extensión correcta y espera a que la instales
-   - Abre YouTube automáticamente con instrucciones en pantalla
-   - Detecta `cookies.txt` solo y continúa sin que hagas nada más
-
-Al terminar, el script está listo para usar.
-
-> ℹ️ **Las cookies caducan** (semanas o meses). Cuando veas el error `Please sign in`, re-exporta `cookies.txt` desde la extensión del navegador y reemplaza el archivo. No hace falta reinstalar nada más.
-
----
-
-## Instalación en Mac / Linux
-
-```bash
-# 1. yt-dlp desde GitHub (no usar pip)
-# Mac:
-brew install yt-dlp
-# Linux:
-sudo curl -L https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp -o /usr/local/bin/yt-dlp
-sudo chmod a+rx /usr/local/bin/yt-dlp
-
-# 2. Clonar e instalar
-git clone https://github.com/Asesorian/yt-transcribe.git
-cd yt-transcribe
-pip install groq
-
-# ffmpeg (necesario para archivos de video locales y audios >25 min)
-# Mac:
-brew install ffmpeg
-# Ubuntu/Debian:
-sudo apt install ffmpeg
-
+# 3. Configurar API key de Groq
 cp .env.example .env
-# Edita .env y pon tu clave: GROQ_API_KEY=tu_clave_aqui
+# Editar .env y añadir: GROQ_API_KEY=tu_clave_aqui
 ```
-
-Después sigue el proceso de cookies de la sección siguiente.
-
----
-
-## Autenticación con YouTube (requerida desde 2026)
-
-**Por qué ocurre esto:** A principios de 2026 YouTube lanzó una campaña activa contra las herramientas de descarga automatizada. Todos los videos — incluso los públicos — empezaron a devolver el error `Sign in to confirm you're not a bot`. No es un bug del script ni de yt-dlp: es una decisión deliberada de YouTube para forzar el uso de su plataforma directamente.
-
-Al mismo tiempo, YouTube eliminó el soporte OAuth2 en yt-dlp, y Chrome 127+ cambió el cifrado de sus cookies (App-Bound Encryption), lo que impide que yt-dlp las lea directamente con `--cookies-from-browser`. La única vía estable que queda es exportar las cookies manualmente como archivo `cookies.txt`.
-
-**En Windows el instalador te guía por este proceso automáticamente.** Para Mac/Linux, o si necesitas renovar las cookies:
-
-1. Instala la extensión **Get cookies.txt LOCALLY**:
-   - Chrome: [chromewebstore.google.com](https://chromewebstore.google.com/detail/get-cookiestxt-locally/cclelndahbckbenkjhflpdbgdldlbecc)
-2. Abre [youtube.com](https://youtube.com) con tu sesión iniciada
-3. Haz clic en el icono de la extensión → **Export**
-4. Guarda el archivo como `cookies.txt` en la misma carpeta que `yt_transcribe.py`
-
-El script detecta `cookies.txt` automáticamente. Verás `🍪 Usando cookies.txt` al procesar cualquier URL de YouTube.
-
-> ⚠️ **No subas `cookies.txt` a Git.** Está en `.gitignore` — contiene tu sesión de YouTube y no debe ser pública.
-
----
-
-## Obtener API key de Groq (gratis)
-
-1. Ve a [console.groq.com](https://console.groq.com)
-2. Crea una cuenta gratuita
-3. API Keys → Create API Key
-4. Copia la clave y pégala en tu `.env`
-
-El plan gratuito incluye ~300 minutos de audio por día con Whisper Large v3.
 
 ---
 
 ## Uso
 
+### Interfaz gráfica (recomendado)
+
+Doble clic en **`MediaTranscribe.vbs`** — abre la GUI sin ventana de consola.
+
+O ejecutar directamente:
 ```bash
-# URL de YouTube — subtítulos si hay, si no: Groq Whisper
+pythonw launcher.pyw
+```
+
+**Opciones en la GUI:**
+- **Examinar...** — selecciona uno o varios archivos de audio/video desde el explorador
+- **Transcribir** — procesa las fuentes (URL o rutas pegadas en el textarea)
+- **Forzar Groq** — omite la búsqueda de subtítulos en YouTube e incluye la API de Groq directamente
+- **Abrir carpeta transcripciones** — abre la carpeta de salida
+
+### Línea de comandos
+
+```bash
+# Audio o video local
+python yt_transcribe.py "reunion.aac"
+python yt_transcribe.py "C:\grabaciones\meeting.mp3"
+
+# URL de YouTube o Vimeo
 python yt_transcribe.py "https://youtube.com/watch?v=xxxxx"
 
-# Archivo de video local (mp4, mkv, avi, mov...)
-python yt_transcribe.py "reunion.mp4"
-python yt_transcribe.py "C:\grabaciones\meeting.mp4"
+# Modo batch — varios archivos a la vez
+python yt_transcribe.py "reunion1.mp3" "reunion2.aac" "https://youtu.be/xxxxx"
 
-# Archivo de audio local (mp3, m4a, wav, ogg...)
-python yt_transcribe.py "audio.mp3"
-python yt_transcribe.py "C:\grabaciones\entrevista.m4a"
+# Forzar Groq (sin subtítulos YouTube)
+python yt_transcribe.py URL --force-audio
 
-# Modo batch — varias fuentes a la vez (URLs y/o archivos mezclados)
-python yt_transcribe.py "URL1" "URL2" "URL3"
-python yt_transcribe.py sesion1.mp4 sesion2.mp4 sesion3.mp3
-python yt_transcribe.py "https://youtube.com/watch?v=xxx" reunion.mp4 entrevista.mp3
+# Idioma de subtítulos
+python yt_transcribe.py URL --lang en
 
-# Forzar Groq Whisper (saltar subtítulos YouTube)
-python yt_transcribe.py "URL" --force-audio
-
-# Guardar en otra carpeta
-python yt_transcribe.py "URL" -o "/ruta/a/mis_transcripciones"
-
-# Buscar subtítulos en inglés
-python yt_transcribe.py "URL" --lang en
+# Carpeta de salida personalizada
+python yt_transcribe.py archivo.mp3 -o "C:\mis_transcripciones"
 ```
 
 ---
 
-## Modo batch
+## Gestión de duplicados
 
-Pasa cualquier combinación de URLs de YouTube y archivos locales en un solo comando:
+Cuando el archivo de salida ya existe, la GUI pregunta qué hacer:
 
-```bash
-python yt_transcribe.py "URL1" "URL2" sesion.mp4 grabacion.mp3
+- **Reemplazar** — sobreescribe el archivo existente
+- **Guardar como nuevo** — crea `archivo (2).md`, `archivo (3).md`, etc.
+- **Omitir** — salta este archivo y continúa con los demás (útil en batch)
+
+---
+
+## Log en tiempo real
+
+La GUI muestra el progreso en color durante el procesamiento:
+
+| Color | Significado |
+|-------|-------------|
+| 🔵 Azul | Pasos del proceso (transcribiendo, descargando...) |
+| 🟡 Amarillo | Progreso y descargas (%, tamaños, partes) |
+| 🟢 Verde | Éxitos (ok, completado, guardado) |
+| 🟠 Naranja | Avisos (rate limit, espera, reemplazando) |
+| 🔴 Rojo | Errores |
+
+---
+
+## Arquitectura
+
+```
+yt_transcribe.py     # Motor principal (CLI + lógica)
+launcher.pyw         # GUI Tkinter (sin consola)
+MediaTranscribe.vbs  # Lanzador sin ventana negra
+transcripciones/     # Carpeta de salida (auto-creada)
+.env                 # GROQ_API_KEY (no subir a git)
+cookies.txt          # Cookies YouTube (opcional, para vídeos con login)
 ```
 
-- Se procesan en orden, uno a uno
-- Si una fuente falla, el error se muestra y continúa con la siguiente
-- Al final se imprime un resumen con todas las transcripciones completadas y los errores
+**Flujo para archivos locales:**
+1. ffprobe obtiene duración y metadatos
+2. Si >24 MB → ffmpeg divide en chunks con 5s de overlap
+3. Cada chunk se envía a Groq Whisper API
+4. Se recomponen timestamps globales y se deduplican zonas de overlap
+5. Output: Markdown con párrafos de ~45s
+
+**Flujo para YouTube/Vimeo:**
+1. yt-dlp obtiene metadatos
+2. Busca subtítulos nativos (gratis, sin Groq)
+3. Si no hay subtítulos → descarga audio y usa flujo de archivo local
 
 ---
 
-## Cómo funciona
+## Notas sobre Groq
 
-1. **Detecta automáticamente** si es una URL de YouTube o un archivo local
-2. **Para YouTube:** busca subtítulos primero (gratis), si no los hay descarga el audio
-3. **Para archivos de video** (mp4, mkv...): extrae el audio con ffmpeg y transcribe con Groq
-4. **Para archivos de audio** (mp3, m4a...): envía directamente a Groq Whisper
-5. **Si el audio supera 24 MB:** lo divide en partes con **5 segundos de overlap** entre chunks, valida tamaños reales y re-segmenta si hace falta. Al recomponer, **deduplica las zonas de solapamiento** para evitar texto repetido
-6. **Timestamps automáticos:** cada ~45 segundos de contenido (o tras un silencio >3s) se abre un nuevo párrafo con `[HH:MM:SS]` global
-7. **Si hay rate limit (429):** espera el tiempo exacto que indica Groq y reintenta solo
-8. **Tolerancia a fallos por chunk:** si una parte concreta falla, se marca `[PARTE X FALLÓ]` y continúa con las siguientes (no aborta todo)
-9. **Validación de completitud:** al final, comprueba caracteres / minuto y avisa si la densidad parece anormalmente baja
-10. **Guarda** la transcripción como `.md` en la carpeta `transcripciones/`
-
----
-
-## Formatos soportados
-
-| Tipo | Extensiones |
-|---|---|
-| Video | `.mp4` `.mkv` `.avi` `.mov` `.webm` `.wmv` `.ts` `.mts` |
-| Audio | `.mp3` `.m4a` `.wav` `.ogg` `.flac` `.opus` `.weba` |
-
----
-
-## Formato de salida
-
-```markdown
-# Título del Video o Nombre del Archivo
-
-> **Fuente:** NombreCanal / Archivo local
-> **Fecha:** 2026-04-03
-> **Duración:** 2h 25m 03s
-> **Transcrito:** 2026-04-03 22:15
-> **Método:** Groq Whisper (whisper-large-v3)
-> **URL / Archivo:** ...
-
-[transcripción completa]
-```
-
----
-
-## Requisitos
-
-- Python 3.10+
-- **yt-dlp** instalado desde GitHub o winget (no pip — ver Instalación)
-- groq
-- ffmpeg (necesario para archivos de video locales y audios >25 min)
-- API key de Groq (gratuita)
-- `cookies.txt` de YouTube (el instalador te guía — ver Autenticación)
-
----
-
-## Troubleshooting
-
-### Error: *"Please sign in"* / *"Sign in to confirm you're not a bot"*
-
-YouTube requiere autenticación desde 2026. Ver sección **Autenticación** arriba.
-
-Si ya tienes `cookies.txt` y vuelve a aparecer el error, las cookies han caducado. Re-expórtalas desde el navegador y reemplaza el archivo. No hace falta reinstalar nada.
-
-### Error: *"Private video"* / *"Sign in if you've been granted access"*
-
-El vídeo es privado o no listado. Las cookies solo funcionan para videos accesibles con tu cuenta. Si el video no es visible desde tu navegador, tampoco será descargable.
-
-### yt-dlp falla de forma rara con vídeos de YouTube
-
-YouTube cambia su sistema de protección frecuentemente. Si notas errores extraños:
-
-1. **Actualiza yt-dlp:**
-```bash
-# Windows
-winget upgrade yt-dlp
-
-# Mac
-brew upgrade yt-dlp
-
-# Linux
-sudo curl -L https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp -o /usr/local/bin/yt-dlp
-```
-2. **Re-exporta cookies.txt** — las cookies antiguas pueden causar errores inesperados
-
-### Aviso: *"transcripción posiblemente incompleta"*
-
-Si ves un warning de densidad chars/minuto baja, busca marcas `[PARTE X FALLÓ]` en el output. Volver a lanzar el comando suele resolverlo (suelen ser rate limits puntuales).
+- Plan gratuito: ~7200 segundos de audio por hora
+- Para reuniones largas (>1h) puede haber esperas por rate limit — la app las gestiona automáticamente y reintenta
+- Modelo usado: `whisper-large-v3`
+- Coste plan de pago: ~$0.111/hora de audio
 
 ---
 
 ## Changelog
 
-### v3.1 (18 abril 2026)
+### v1.0 (MediaTranscribe) — Abril 2026
+- Renombrado de YT-Transcribe a MediaTranscribe
+- GUI rediseñada: colores morado/negro, log multicolor en tiempo real
+- Soporte nativo `.aac` añadido
+- Botón **Examinar** para selección de archivos locales
+- Detección de duplicados con diálogo Reemplazar / Guardar como nuevo / Omitir
+- Progreso yt-dlp visible en log en tiempo real (streaming con Popen)
+- Sin ventana negra: `CREATE_NO_WINDOW` en todos los subprocesos
+- Lanzador `.vbs` para abrir sin consola desde acceso directo
+- Barra de progreso animada durante procesamiento
+- `--output-name` arg para gestión de nombres desde el launcher
 
-**Autenticación YouTube obligatoria + instalador one shot.**
+### v3.0 (YT-Transcribe) — Marzo 2026
+- Chunking con overlap de 5s para evitar pérdida de palabras en bordes
+- Groq con `verbose_json` + timestamps por segmento
+- Recomposición de timestamps globales con deduplicación
+- Output Markdown con `[HH:MM:SS]` cada ~45s
 
-YouTube lanzó en 2026 una campaña contra downloaders que afecta a todos los videos públicos. OAuth2 también fue eliminado. Cambios:
-- Instalador completamente reescrito: instala yt-dlp, groq, ffmpeg y guía el proceso de cookies paso a paso sin intervención manual salvo la exportación
-- Si el usuario no tiene la extensión, el instalador abre Chrome Web Store directamente y espera confirmación antes de continuar
-- El instalador abre YouTube automáticamente, muestra instrucciones en pantalla y detecta `cookies.txt` solo cuando aparece en la carpeta
-- Soporte nativo `cookies.txt` en el script: se pasa automáticamente a yt-dlp si el archivo existe
-- El script muestra `🍪 Usando cookies.txt` al procesar URLs de YouTube
-- **Requisito actualizado:** yt-dlp debe instalarse desde GitHub o winget, no pip
-
-### v3 (16 abril 2026)
-
-**Timestamps y overlap para audios largos.**
-- Output Markdown con `[HH:MM:SS]` por párrafo (~45s de contenido o silencio >3s)
-- Chunking con overlap de 5 segundos entre partes consecutivas
-- Groq Whisper usa `verbose_json` + `timestamp_granularities`
-- Deduplicación en zona de overlap al recomponer timestamps globales
-- Backup de v2 conservado como `yt_transcribe_v2_backup.py`
-
-**Validado con:** video de 128 min → 105.620 caracteres en 3 chunks.
-
-### v2 (12 abril 2026)
-
-**Resuelto:** Bug serio en vídeos largos.
-- `parse_vtt` perdía 80-95% del contenido por dedup global
-- `split_audio` verifica tamaño real de cada chunk
-- Tolerancia a fallos por chunk con marcas `[PARTE X FALLÓ]`
-- Validación de completitud al final (chars/min)
-
-### v1 (4 abril 2026)
-
-Primera versión pública: soporte URLs YouTube + archivos locales, modo batch, retry automático en rate limit, instalador Windows.
+### v2.0 (YT-Transcribe)
+- Modo batch multi-fuente
+- Retry automático en rate limit de Groq
+- Soporte archivos de video local con extracción de audio vía ffmpeg
 
 ---
 
-## Estructura
+## Licencia
 
-```
-yt-transcribe/
-  yt_transcribe.py             Script principal (multiplataforma)
-  yt_transcribe_v2_backup.py   Backup de v2 (sin timestamps)
-  install.bat                  Instalador one shot (Windows)
-  launcher.pyw                 Lanzador con doble clic (Windows)
-  YT-Transcribe.bat            Acceso directo (Windows)
-  .env.example                 Plantilla para tu API key
-  .env                         Tu API key (no se sube a Git)
-  cookies.txt                  Cookies de YouTube (no se sube a Git)
-  transcripciones/             Aquí se guardan los .md (no se sube a Git)
-  README.md                    Este archivo
-```
+MIT
