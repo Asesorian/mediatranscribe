@@ -1,5 +1,5 @@
-﻿"""
-MediaTranscribe v2.3 — YouTube, Vimeo, audio y video local → Markdown con timestamps
+"""
+MediaTranscribe v2.4 — YouTube, Vimeo, audio y video local → Markdown con timestamps
 """
 import tkinter as tk
 from tkinter import messagebox, filedialog, ttk
@@ -193,7 +193,7 @@ def ask_conflict(parent, filename):
 class Launcher:
     def __init__(self):
         self.root = tk.Tk()
-        self.root.title("MediaTranscribe v2.3")
+        self.root.title("MediaTranscribe v2.4")
         self.root.geometry("720x780")
         self.root.resizable(True, True)
         self.root.configure(bg=BG_DARK)
@@ -310,7 +310,8 @@ class Launcher:
             fg=LOG_SUCCESS, bg=BG_DARK)
         self.key_status.pack(side="left", padx=(10, 0))
 
-        # ── Advertencia Local Whisper ─────────────────────────────────────
+        # ── Banner informativo por motor ──────────────────────────────────
+        # Local Whisper: fondo amarillo, advertencia lentitud
         self.local_warning = tk.Frame(self.root, bg="#1a1200")
         tk.Label(self.local_warning, text="⚠",
                  font=("Segoe UI", 13), fg=LOG_WARNING, bg="#1a1200").pack(
@@ -322,26 +323,58 @@ class Launcher:
                  justify="left", font=F_HINT, fg=LOG_WARNING, bg="#1a1200",
                  wraplength=560).pack(side="left", pady=6, padx=(0, 12))
 
+        # Groq: banner verde, recomendado general
+        self.groq_info = tk.Frame(self.root, bg="#001a0a")
+        tk.Label(self.groq_info, text="✓",
+                 font=("Segoe UI", 13, "bold"), fg=LOG_SUCCESS, bg="#001a0a").pack(
+                 side="left", padx=(12, 4), pady=5)
+        tk.Label(self.groq_info,
+                 text="Motor recomendado para uso general.  "
+                      "Ideal para reuniones, múltiples hablantes y mezcla de idiomas.\n"
+                      "Procesamiento cloud rápido con Whisper Large v3.",
+                 justify="left", font=F_HINT, fg=LOG_SUCCESS, bg="#001a0a",
+                 wraplength=560).pack(side="left", pady=5, padx=(0, 12))
+
+        # Gemini: banner naranja, aviso multi-hablante
+        self.gemini_info = tk.Frame(self.root, bg="#1a0e00")
+        tk.Label(self.gemini_info, text="⚠",
+                 font=("Segoe UI", 13), fg=LOG_WARNING, bg="#1a0e00").pack(
+                 side="left", padx=(12, 4), pady=6)
+        tk.Label(self.gemini_info,
+                 text="Mejor para audio limpio con un único hablante (podcasts, clases, conferencias).\n"
+                      "Puede fallar con reuniones de múltiples voces superpuestas (bucles de repetición).",
+                 justify="left", font=F_HINT, fg=LOG_WARNING, bg="#1a0e00",
+                 wraplength=560).pack(side="left", pady=6, padx=(0, 12))
+
         # ── Callback motor ────────────────────────────────────────────────
         def on_motor_change(*_):
             motor = self.motor_var.get()
+            # Ocultar todos los banners
+            self.local_warning.pack_forget()
+            self.groq_info.pack_forget()
+            self.gemini_info.pack_forget()
+            self.key_frame.pack_forget()
+            self.model_container.pack_forget()
+
             if motor == "Local Whisper":
                 self.model_container.pack(side="left")
-                self.key_frame.pack_forget()
                 self.local_warning.pack(fill="x", padx=24, pady=(4, 0))
-                # Comprobar / instalar faster-whisper
                 self._check_and_install_fw()
-            else:
-                self.model_container.pack_forget()
-                self.local_warning.pack_forget()
+            elif motor == "Gemini API":
                 self._load_key_for_motor(motor)
                 self.key_frame.pack(fill="x", padx=24, pady=(8, 0))
+                self.gemini_info.pack(fill="x", padx=24, pady=(4, 0))
+            else:  # Groq API
+                self._load_key_for_motor(motor)
+                self.key_frame.pack(fill="x", padx=24, pady=(8, 0))
+                self.groq_info.pack(fill="x", padx=24, pady=(4, 0))
 
         self.motor_var.trace("w", on_motor_change)
 
         # Arranque con Groq API
         self._load_key_for_motor("Groq API")
         self.key_frame.pack(fill="x", padx=24, pady=(8, 0))
+        self.groq_info.pack(fill="x", padx=24, pady=(4, 0))
 
         # ── Checkbox Forzar audio ─────────────────────────────────────────
         force_row = tk.Frame(self.root, bg=BG_DARK)

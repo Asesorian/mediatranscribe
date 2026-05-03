@@ -1,4 +1,4 @@
-﻿# MediaTranscribe v2.3
+# MediaTranscribe v2.4
 
 > Transcripción de audio y video a Markdown con timestamps — YouTube, Vimeo, archivos locales.
 
@@ -21,14 +21,32 @@ Convierte cualquier fuente de audio o video en un archivo Markdown con timestamp
 
 ## Motores de transcripción
 
-| Motor | Velocidad | Requiere | Ideal para |
-|-------|-----------|----------|------------|
-| **Groq API** | ⚡ Muy rápido | API key (gratis) | Uso habitual |
-| **Gemini API** | ⚡ Rápido | API key (gratis) | Alternativa cloud |
-| **Local Whisper** | 🐢 Lento | Sin internet | Uso offline / privacidad |
+| Motor | Velocidad | Requiere | Ideal para | Evitar en |
+|-------|-----------|----------|------------|-----------|
+| **Groq API** ✅ | ⚡ Muy rápido | API key (gratis) | Reuniones, múltiples hablantes, mezcla de idiomas | — |
+| **Gemini API** | ⚡ Rápido | API key (gratis) | Podcasts, clases, conferencias (1 hablante limpio) | Reuniones con voces superpuestas |
+| **Local Whisper** | 🐢 Lento | Sin internet | Privacidad, uso offline | Audio largo (>15 min) |
 
-> ⚠ **Local Whisper** usa procesamiento en CPU sin GPU. Un audio de 1h puede tardar 10–30 min según el modelo.
-> Para uso habitual recomendamos **Groq API** o **Gemini API**.
+> ✅ **Groq API** es el motor recomendado para uso general. Usa Whisper Large v3 y gestiona bien múltiples
+> hablantes, mezcla de idiomas y conversaciones superpuestas.
+>
+> ⚠ **Gemini API** puede generar **bucles de repetición** en audios con múltiples voces simultáneas
+> (ej. reuniones de 3-4 personas con cruces de voz). En ese caso, cambia a Groq.
+>
+> ⚠ **Local Whisper** usa CPU sin GPU. Un audio de 1h puede tardar 10–30 min según el modelo.
+
+---
+
+## ¿Qué motor usar?
+
+**Reunión con varias personas** → **Groq API**
+Voces superpuestas, interrupciones, mezcla español/catalán/inglés: Groq con Whisper Large v3 lo gestiona correctamente. Gemini puede entrar en bucles de repetición en este escenario.
+
+**Podcast / clase / conferencia (1 hablante)** → **Groq API o Gemini API**
+Ambos funcionan bien con audio limpio de un único hablante. Gemini es especialmente bueno con grabaciones de estudio de larga duración.
+
+**Sin conexión / privacidad** → **Local Whisper**
+Procesamiento 100% local, sin enviar datos a ningún servidor. Lento en CPU, pero funciona sin internet. Usar modelo `small` como equilibrio velocidad/calidad.
 
 ---
 
@@ -163,6 +181,7 @@ Si el archivo de salida ya existe, la GUI pregunta:
 - Modelo: `gemini-2.5-flash`
 - Sube el audio a la File API de Google y lo elimina tras transcribir
 - Límites gratuitos generosos para uso personal
+- ⚠ **Limitación conocida:** puede generar bucles de repetición ("No, no, no..." o "Nos vamos a ver un día...") en audios con múltiples hablantes simultáneos, cruces de voz o mezcla de idiomas. En ese escenario, usar Groq.
 
 **Local Whisper:**
 - Totalmente offline, sin coste
@@ -173,6 +192,14 @@ Si el archivo de salida ya existe, la GUI pregunta:
 ---
 
 ## Changelog
+
+### v2.4 / motor v4.3 — Mayo 2026
+- Banners informativos por motor al arrancar la GUI:
+  - Groq: banner verde ✓ (recomendado, múltiples hablantes)
+  - Gemini: banner naranja ⚠ (mejor para 1 hablante, aviso bucles)
+  - Local: banner amarillo ⚠ (lento en CPU)
+- README: tabla de motores ampliada con columna "Evitar en" y sección "¿Qué motor usar?"
+- Documentada limitación de Gemini con audio multi-hablante (hallucination loops)
 
 ### v2.3 / motor v4.3 — Mayo 2026
 - Advertencia visible al seleccionar Local Whisper (fondo amarillo, explica lentitud en CPU)
