@@ -1,6 +1,11 @@
-﻿#!/usr/bin/env python3
+#!/usr/bin/env python3
 """
-MediaTranscribe v4.3 (motor): YouTube, Vimeo, audio y video local → Markdown con timestamps
+MediaTranscribe v4.4 (motor): YouTube, Vimeo, audio y video local → Markdown con timestamps
+
+Cambios v4.4:
+  - yt-dlp: flag --no-update en todas las llamadas (silencia el warning de version antigua)
+  - Auto-actualizacion de yt-dlp al arrancar (pip install -U), como maximo 1 vez cada 14 dias
+    mediante marcador en disco (.ytdlp_last_update). No molesta si no hay red.
 
 Cambios v4.3:
   - Motor Gemini actualizado: gemini-2.0-flash → gemini-2.5-flash
@@ -50,6 +55,10 @@ DEDUP_TOLERANCE = 0.5
 COOKIES_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "cookies.txt")
 MODELS_DIR   = os.path.join(os.path.dirname(os.path.abspath(__file__)), "models")
 
+# Auto-actualizacion de yt-dlp
+YTDLP_UPDATE_MARKER        = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".ytdlp_last_update")
+YTDLP_UPDATE_INTERVAL_DAYS = 14
+
 # Tamano aproximado total del directorio de cada modelo (MB)
 # Ligeramente por encima del real para evitar mostrar >100%
 MODEL_SIZES    = {"tiny": "39 MB", "small": "244 MB", "large-v3-turbo": "809 MB", "large-v3": "1.5 GB"}
@@ -65,10 +74,37 @@ def safe_filename(title):
 
 
 def get_yt_args():
-    args = []
+    # --no-update: evita la comprobacion/aviso de version antigua de yt-dlp
+    args = ["--no-update"]
     if os.path.exists(COOKIES_FILE):
         args += ["--cookies", COOKIES_FILE]
     return args
+
+
+def ensure_ytdlp_fresh():
+    """
+    Actualiza yt-dlp via pip como maximo una vez cada YTDLP_UPDATE_INTERVAL_DAYS
+    (marcador en disco). Silencioso y tolerante a fallos: si no hay red, no molesta
+    y lo reintenta en la siguiente ejecucion.
+    """
+    try:
+        if os.path.exists(YTDLP_UPDATE_MARKER):
+            age_days = (datetime.now().timestamp() - os.path.getmtime(YTDLP_UPDATE_MARKER)) / 86400
+            if age_days < YTDLP_UPDATE_INTERVAL_DAYS:
+                return
+        print("  Comprobando actualizaciones de yt-dlp...", flush=True)
+        result = subprocess.run(
+            [sys.executable, "-m", "pip", "install", "-U", "--quiet", "yt-dlp"],
+            capture_output=True, text=True, creationflags=NO_WINDOW, timeout=180,
+        )
+        if result.returncode == 0:
+            print("  yt-dlp al dia.", flush=True)
+            Path(YTDLP_UPDATE_MARKER).touch()
+        else:
+            print("  (No se pudo actualizar yt-dlp ahora; se reintentara en la proxima ejecucion)", flush=True)
+    except Exception:
+        # Nunca bloquear el flujo principal por el auto-update
+        pass
 
 
 def load_env():
@@ -631,7 +667,7 @@ def process_source(source, args, output_dir):
 # ---------------------------------------------------------------------------
 
 def main():
-    parser = argparse.ArgumentParser(description="MediaTranscribe v4.2")
+    parser = argparse.ArgumentParser(description="MediaTranscribe v4.4")
     parser.add_argument("sources", nargs="+")
     parser.add_argument("-o", "--output",   default=None)
     parser.add_argument("--output-name",    default=None)
@@ -642,8 +678,13 @@ def main():
     parser.add_argument("--model-size",     default="small",
                         choices=["tiny", "small", "large-v3-turbo", "large-v3"])
     parser.add_argument("--vad",            action="store_true")
+    parser.add_argument("--no-ytdlp-update", action="store_true",
+                        help="Omite la comprobacion/actualizacion automatica de yt-dlp")
     args = parser.parse_args()
     load_env()
+    # Mantener yt-dlp actualizado (solo si hay fuentes online y como max 1 vez cada N dias)
+    if not args.no_ytdlp_update and any(not is_local_file(s) for s in args.sources):
+        ensure_ytdlp_fresh()
     output_dir = args.output or os.path.join(
         os.path.dirname(os.path.abspath(__file__)), "transcripciones")
     os.makedirs(output_dir, exist_ok=True)
