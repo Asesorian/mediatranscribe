@@ -24,3 +24,7 @@ venv/
 # Windows
 Thumbs.db
 desktop.ini
+# Archivos locales de esta copia (no son parte del código)
+.ytdlp_last_update
+launcher_v1_0_backup.pyw
+Imagenes de la aplicación/
